@@ -197,19 +197,24 @@ M1에서 아래를 기본값으로 잡고 시작한다. 설정 파일로 관리�
 
 ---
 
-### M0 — 기반 세팅
+### M0 — 기반 세팅 ✅
 
 > **완료 조건**: 새 PC에서 저장소를 clone하고 문서에 적힌 명령 몇 줄로 개발 환경이 똑같이 재현된다.
 
 - [x] 저장소 뼈대: README, `.gitignore`, `.gitattributes`
 - [x] 학습 로그 규약 및 템플릿 (`docs/tech-notes/`)
-- [ ] Python 패키지/의존성 관리 도구 선정 및 프로젝트 초기화
-- [ ] 설정 관리 — API 키·경로·유니버스를 코드에서 분리 (`.env` + 설정 객체, `.env.example` 커밋)
-- [ ] 로깅 기본 설정
-- [ ] 패키지 레이아웃 및 리포지토리 계층 경계 정의 (4.1 참고)
+- [x] 의존성 관리 도구 선정 및 프로젝트 초기화 — **uv**, `src` 레이아웃, `uv.lock` 커밋
+- [x] 설정 관리 — **pydantic-settings**, `DII_` 접두사 환경변수 + `.env`, `.env.example` 커밋
+- [x] 로깅 기본 설정 — 진입점 1회 설정, Windows 콘솔 UTF-8 고정
+- [x] 패키지 레이아웃 및 계층 경계 정의 → `docs/architecture.md`
+- [x] 품질 도구 — ruff(린트·포맷), mypy(strict), pytest
 
-**신규 기술**: 의존성 관리 도구, 설정 관리 라이브러리
-**CS 학습 포인트**: 가상환경과 의존성 잠금(lock)의 의미, 환경변수를 통한 설정 주입, 12-factor app의 config 원칙
+**도입한 기술**: uv, pydantic-settings, ruff, mypy, pytest
+**학습 로그**: `01-foundation-uv.md`, `02-foundation-pydantic-settings.md`
+**CS 학습 포인트**: 가상환경과 의존성 잠금(lock)의 의미, 환경변수를 통한 설정 주입,
+12-factor app의 config 원칙, 경계에서의 검증(fail fast), `src` 레이아웃과 import 경로
+
+> **완료.** `uv sync` → `uv run dii config` 로 재현을 확인했다.
 
 ---
 
@@ -357,3 +362,4 @@ REST API 설계와 상태 코드, 동기·비동기 처리, 외부 API 실패 �
 | 날짜 | 내용 |
 |---|---|
 | 2026-08-27 | 4~6장 추가 — 프로젝트 결정(D-1~D-3), 마일스톤 M0~M5, 완료 조건 정의 |
+| 2026-08-27 | M0 완료 — uv / pydantic-settings / ruff / mypy / pytest 도입, 학습 로그 2편 |

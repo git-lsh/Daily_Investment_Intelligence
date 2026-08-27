@@ -27,8 +27,39 @@ Data Collection → Data Storage → Data Processing → Quantitative Analysis
 
 | 문서 | 내용 |
 |---|---|
-| [Project_Plan.md](Project_Plan.md) | 프로젝트 기획서 — 목표, 문제 정의, 학습 로그 운영 규칙 |
+| [Project_Plan.md](Project_Plan.md) | 프로젝트 기획서 — 목표, 확정 결정, 마일스톤 로드맵, 학습 로그 운영 규칙 |
+| [docs/architecture.md](docs/architecture.md) | 패키지 레이아웃과 계층 경계 원칙 |
 | [docs/tech-notes/](docs/tech-notes/) | 기술 스택별 학습 로그 (기술 1개 = 파일 1개) |
+
+## 개발 환경 준비
+
+[uv](https://docs.astral.sh/uv/) 하나만 있으면 된다. Python 설치나 가상환경 생성은 uv 가 처리한다.
+
+```bash
+git clone https://github.com/git-lsh/Daily_Investment_Intelligence.git
+cd Daily_Investment_Intelligence
+
+uv sync                 # 가상환경 생성 + uv.lock 대로 의존성 설치
+cp .env.example .env    # 설정 파일 준비 (기본값 그대로도 동작한다)
+
+uv run dii config       # 해석된 설정 확인 — 여기까지 되면 환경 준비 완료
+```
+
+`uv run` 이 실행 직전에 환경을 `uv.lock` 과 맞춰 주므로 가상환경을 따로 activate 하지 않는다.
+
+### 자주 쓰는 명령
+
+```bash
+uv run pytest           # 테스트
+uv run ruff check .     # 린트
+uv run ruff format .    # 포매팅
+uv run mypy             # 타입 체크
+```
+
+### 설정
+
+모든 설정은 `DII_` 접두사를 붙인 환경변수 또는 `.env` 파일로 주입한다.
+사용 가능한 항목은 [.env.example](.env.example) 을 참고한다. `.env` 는 커밋하지 않는다.
 
 ## 개발 원칙
 
@@ -44,6 +75,6 @@ Data Collection → Data Storage → Data Processing → Quantitative Analysis
 
 ## 상태
 
-**M0 — 기반 세팅** 진행 중. 저장소 뼈대와 문서 규약 완료, 개발 환경 구성 남음.
+**M0 — 기반 세팅 완료.** 다음은 M1(데이터 수집 + 저장).
 
 마일스톤 M0~M5와 각 단계의 완료 조건은 [Project_Plan.md 5장](Project_Plan.md)을 참고.
