@@ -1,0 +1,100 @@
+# 분석 유니버스 (초안)
+#
+# 이 파일은 파이프라인이 매일 수집·분석할 대상을 정의한다.
+# 종목을 늘리고 줄이는 것은 이 파일만 고치면 되고, 코드는 건드리지 않는다.
+#
+# 선정 기준 (Project_Plan.md 5.0절):
+#   - 섹터당 동일 개수를 둔다. 시가총액 가중으로 뽑으면 정보기술 섹터가 절반을 차지해
+#     "어느 섹터가 강한가"를 비교하는 횡단면 분석이 성립하지 않는다.
+#   - 섹터 안에서는 사업 모델이 서로 다른 종목을 고른다. 같은 업종만 넣으면
+#     섹터 내 랭킹이 늘 비슷하게 나와 종목 선택 신호가 무의미해진다.
+#   - 거래대금이 크고 상장 이력이 긴 종목으로 제한한다. 모멘텀·변동성 계산에
+#     충분한 과거 데이터가 필요하고, 거래가 얇으면 지표에 잡음이 많다.
+
+schema_version = 1
+
+# 시장 전체 벤치마크. 개별 종목·섹터의 상대강도를 이 대비로 계산한다.
+[benchmark]
+ticker = "SPY"
+name = "S&P 500"
+
+# ---------------------------------------------------------------------------
+# GICS 11개 섹터. etf 는 섹터 자체의 수익률을 재는 대용물(proxy)로 쓴다.
+# ---------------------------------------------------------------------------
+
+[[sectors]]
+etf = "XLK"
+name = "Information Technology"
+name_ko = "정보기술"
+tickers = ["AAPL", "MSFT", "NVDA", "CRM"]
+note = "하드웨어 / 소프트웨어·클라우드 / 반도체 / SaaS 로 성격을 갈랐다"
+
+[[sectors]]
+etf = "XLC"
+name = "Communication Services"
+name_ko = "커뮤니케이션 서비스"
+tickers = ["GOOGL", "META", "NFLX", "TMUS"]
+note = "광고 기반 플랫폼 2 + 구독 스트리밍 + 통신. 통신주는 금리에 민감해 성격이 다르다"
+
+[[sectors]]
+etf = "XLY"
+name = "Consumer Discretionary"
+name_ko = "임의소비재"
+tickers = ["AMZN", "TSLA", "HD", "MCD"]
+note = "이커머스 / 자동차 / 주택 관련 소매 / 외식. HD 는 금리·주택 경기에 직접 반응한다"
+
+[[sectors]]
+etf = "XLP"
+name = "Consumer Staples"
+name_ko = "필수소비재"
+tickers = ["PG", "KO", "WMT", "COST"]
+note = "생활용품 / 음료 / 대형 마트 / 창고형 회원제. 방어주 성격 확인용 섹터"
+
+[[sectors]]
+etf = "XLV"
+name = "Health Care"
+name_ko = "헬스케어"
+tickers = ["LLY", "UNH", "JNJ", "TMO"]
+note = "신약 모멘텀 / 보험·관리의료 / 대형 제약 / 연구장비. 규제 뉴스 반응이 제각각이다"
+
+[[sectors]]
+etf = "XLF"
+name = "Financials"
+name_ko = "금융"
+tickers = ["JPM", "V", "BAC", "SPGI"]
+note = "은행 2 + 결제망 + 금융데이터·신용평가. V 와 SPGI 는 금리보다 거래량·발행량에 연동된다"
+
+[[sectors]]
+etf = "XLI"
+name = "Industrials"
+name_ko = "산업재"
+tickers = ["CAT", "GE", "HON", "UNP"]
+note = "건설기계 / 항공엔진·전력 / 복합 / 철도. 경기 사이클 국면을 읽는 데 쓴다"
+
+[[sectors]]
+etf = "XLE"
+name = "Energy"
+name_ko = "에너지"
+tickers = ["XOM", "CVX", "COP", "SLB"]
+note = "통합 정유 2 + E&P + 유전서비스. 유가에 대한 민감도가 단계별로 다르다"
+
+[[sectors]]
+etf = "XLB"
+name = "Materials"
+name_ko = "소재"
+tickers = ["LIN", "SHW", "FCX", "NEM"]
+note = "산업용 가스 / 도료 / 구리 / 금. 구리와 금은 방향이 자주 엇갈려 섹터 내 분산이 크다"
+
+[[sectors]]
+etf = "XLRE"
+name = "Real Estate"
+name_ko = "부동산"
+tickers = ["PLD", "AMT", "EQIX", "O"]
+note = "물류창고 / 통신탑 / 데이터센터 / 임대수익 리테일. 전부 REIT 라 금리 민감도가 높다"
+
+[[sectors]]
+etf = "XLU"
+name = "Utilities"
+name_ko = "유틸리티"
+tickers = ["NEE", "SO", "DUK", "CEG"]
+note = "신재생 비중 높음 / 규제 유틸 2 / 원전 기반 도매전력. CEG 는 데이터센터 전력 수요와 연동된다"
