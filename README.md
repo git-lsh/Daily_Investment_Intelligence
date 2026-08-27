@@ -53,6 +53,8 @@ uv run dii config       # 해석된 설정 확인 — 여기까지 되면 환경
 ```bash
 uv run dii collect      # 유니버스 전체의 일봉을 수집해 저장 (재실행 안전)
 uv run dii collect AAPL MSFT   # 특정 심볼만
+uv run dii collect-docs # SEC 공시 + 뉴스 수집 (재실행 안전)
+uv run dii docs --symbol AAPL  # 저장된 문서 조회
 uv run dii score        # 섹터 랭킹 + 종목 스코어 (기준일: 마지막 거래일)
 uv run dii score --as-of 2026-03-17 --top 20   # 과거 시점으로
 uv run dii status       # 저장소 적재 현황
@@ -69,6 +71,10 @@ uv run mypy             # 타입 체크
 
 `dii collect` 는 **몇 번을 실행해도 안전하다.** 이미 받은 날짜는 덮어쓰고 중복 행을 만들지 않으며,
 중간에 실패해도 다시 실행하면 빠진 곳을 채운다. 종료 코드는 성공 `0`, 부분 실패 `2`, 전체 실패 `1` 이다.
+
+`dii collect-docs` 는 **SEC EDGAR 신원 표기가 필요하다.** `.env` 의 `DII_SEC_USER_AGENT` 에
+연락 가능한 이메일을 넣어야 한다 — SEC 의 요구사항이고, 없으면 기동 시점에 실패한다.
+SEC 공시는 개별 종목만 대상으로 한다 (ETF 는 신탁 구조라 8-K/10-Q 를 제출하지 않는다).
 
 ### 분석 유니버스
 
@@ -95,7 +101,7 @@ GICS 11개 섹터 × 4종목 + 섹터 ETF 11개 + 벤치마크(SPY) = **56 심�
 
 ## 상태
 
-**M2 — 정량 분석 완료.** 수집된 데이터로 섹터 랭킹과 종목 팩터 스코어가 나온다.
-다음은 M3(뉴스·공시 수집 + 검색, PostgreSQL 이전).
+**M3 진행 중.** (a) 뉴스·공시 수집 완료 — SEC 공시 411건 + 뉴스 560건 적재.
+다음은 (b) PostgreSQL 이전, (c) 임베딩 + 하이브리드 검색.
 
 마일스톤 M0~M5와 각 단계의 완료 조건은 [Project_Plan.md 5장](Project_Plan.md)을 참고.

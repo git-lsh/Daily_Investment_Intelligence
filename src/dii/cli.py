@@ -14,14 +14,14 @@ from collections.abc import Sequence
 from datetime import date
 
 from dii import __version__
-from dii.collect import PriceCollector
+from dii.collect import FilingCollector, NewsCollector, PriceCollector, RateLimitedClient
 from dii.config import PROJECT_ROOT, Settings, get_settings
 from dii.logging_setup import get_logger, setup_logging
 from dii.processing import load_frames
 from dii.processing.frames import InsufficientDataError
 from dii.quant import FACTORS, rank_sectors, score_stocks
 from dii.quant.scoring import ScoreTable, SectorRanking
-from dii.storage import SecurityKind, SqliteStorage, connect
+from dii.storage import DocumentRepository, SecurityKind, SqliteStorage, connect
 from dii.universe import Universe, UniverseError, load_universe
 
 logger = get_logger(__name__)
@@ -182,6 +182,115 @@ def _cmd_score(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_collect_docs(settings: Settings, args: argparse.Namespace) -> int:
+    """SEC 공시와 뉴스를 수집해 저장한다."""
+    try:
+        universe = load_universe()
+    except UniverseError as exc:
+        logger.error("유니버스 설정을 읽을 수 없다: %s", exc)
+        return 1
+
+    explicit = list(args.symbols) if args.symbols else None
+    want_sec = args.source in ("all", "sec")
+    want_news = args.source in ("all", "news")
+
+    # 뉴스는 섹터 ETF 와 벤치마크에도 붙는다 (시황 기사). 반면 SEC 공시는 개별 기업만 낸다 —
+    # ETF 는 신탁 구조라 company_tickers.json 에 CIK 가 없고 8-K/10-Q 도 제출하지 않는다.
+    # 전체를 대상으로 두면 매일 12건이 "CIK 없음"으로 실패 보고돼 알람 피로가 생긴다.
+    news_symbols = explicit or list(universe.all_symbols)
+    sec_symbols = explicit or list(universe.stocks)
+
+    user_agent = ""
+    if want_sec:
+        try:
+            user_agent = settings.require_sec_user_agent()
+        except ValueError as exc:
+            logger.error("%s", exc)
+            return 1
+
+    settings.ensure_directories()
+    failures = 0
+    total = 0
+
+    with connect(settings.db_path) as conn:
+        _register_securities(SqliteStorage(conn), universe)
+        repository = DocumentRepository(conn)
+
+        if want_sec:
+            logger.info("SEC 공시 수집 시작 — 대상 %d 심볼 (개별 종목만)", len(sec_symbols))
+            client = RateLimitedClient(
+                user_agent=user_agent, min_interval=settings.sec_min_interval
+            )
+            collector = FilingCollector(repository, client, lookback_days=args.lookback_days)
+            result = collector.collect(sec_symbols)
+            total += result.total_documents
+            failures += len(result.failed)
+            print(
+                f"공시: 성공 {len(result.succeeded)}/{len(sec_symbols)} 심볼, "
+                f"{result.total_documents}건 저장"
+            )
+            for outcome in result.failed:
+                print(f"  {outcome.symbol:<6} {outcome.error}")
+
+        if want_news:
+            logger.info("뉴스 수집 시작 — 대상 %d 심볼", len(news_symbols))
+            news_result = NewsCollector(repository).collect(news_symbols)
+            total += news_result.total_documents
+            failures += len(news_result.failed)
+            print(
+                f"뉴스: 성공 {len(news_result.succeeded)}/{len(news_symbols)} 심볼, "
+                f"{news_result.total_documents}건 저장, {news_result.total_skipped}건 건너뜀"
+            )
+            for news_outcome in news_result.failed:
+                print(f"  {news_outcome.symbol:<6} {news_outcome.error}")
+
+        stored = repository.count_documents()
+
+    print(f"이번 실행 {total}건 처리, DB 총 문서 {stored}건")
+
+    if total == 0 and failures:
+        logger.error("한 건도 수집하지 못했다")
+        return 1
+    return EXIT_PARTIAL_FAILURE if failures else 0
+
+
+def _cmd_docs(settings: Settings, args: argparse.Namespace) -> int:
+    """저장된 문서를 조회한다."""
+    if not settings.db_path.exists():
+        print(f"DB 가 아직 없다: {settings.db_path}")
+        return 1
+
+    with connect(settings.db_path) as conn:
+        repository = DocumentRepository(conn)
+        if args.symbol:
+            documents = repository.get_documents(symbol=args.symbol.upper(), limit=args.limit)
+        else:
+            documents = repository.get_documents(limit=args.limit)
+        coverage = repository.document_coverage()
+
+    if not coverage:
+        print("저장된 문서가 없다. `dii collect-docs` 를 먼저 실행한다.")
+        return 1
+
+    print("■ 적재 현황")
+    widths = (6, 22, 6, 12, 12)
+    header = _row(("소스", "종류", "건수", "최초", "최종"), widths, "<<><<", sep="  ")
+    print(header)
+    print("-" * _display_width(header))
+    for source, kind, count, first, last in coverage:
+        print(_row((source, kind, str(count), first, last), widths, "<<><<", sep="  "))
+
+    print()
+    label = f"{args.symbol.upper()} " if args.symbol else ""
+    print(f"■ 최근 {label}문서 {len(documents)}건")
+    for doc in documents:
+        stamp = doc.published_at.strftime("%Y-%m-%d %H:%M")
+        kind = doc.doc_type or "-"
+        print(f"  [{stamp}] ({doc.source.value}/{kind}) {doc.title}")
+        print(f"      {', '.join(doc.symbols)} — {doc.url}")
+    return 0
+
+
 def _print_sector_ranking(ranking: SectorRanking) -> None:
     print(f"■ 섹터 랭킹 — {ranking.as_of.isoformat()} 기준")
     print(f"  ({ranking.benchmark} 1개월 {_pct(ranking.benchmark_return_1m)} 대비 초과 수익률 순)")
@@ -256,13 +365,39 @@ def _display_width(text: str) -> int:
 
 
 def _cell(text: str, width: int, align: str) -> str:
-    """표시 폭 기준으로 칸을 채운다. `align` 은 '<'(왼쪽) 또는 '>'(오른쪽)."""
+    """표시 폭 기준으로 칸을 채운다. `align` 은 '<'(왼쪽) 또는 '>'(오른쪽).
+
+    칸보다 긴 값은 말줄임표로 자른다. 자르지 않으면 그 줄만 뒤 컬럼이 통째로 밀려
+    표 전체가 읽히지 않는다. 한 값의 온전함보다 표의 정렬이 우선이다.
+    """
+    if _display_width(text) > width:
+        text = _truncate(text, width)
     padding = " " * max(0, width - _display_width(text))
     return text + padding if align == "<" else padding + text
 
 
-def _row(values: Sequence[str], widths: Sequence[int], aligns: str) -> str:
-    return "".join(_cell(v, w, a) for v, w, a in zip(values, widths, aligns, strict=True))
+def _truncate(text: str, width: int) -> str:
+    """표시 폭이 `width` 를 넘지 않도록 자르고 말줄임표를 붙인다."""
+    if width <= 1:
+        return "…"[:width]
+    limit = width - 1  # 말줄임표가 한 칸을 쓴다
+    out: list[str] = []
+    used = 0
+    for char in text:
+        step = 2 if unicodedata.east_asian_width(char) in "WF" else 1
+        if used + step > limit:
+            break
+        out.append(char)
+        used += step
+    return "".join(out) + "…"
+
+
+def _row(values: Sequence[str], widths: Sequence[int], aligns: str, *, sep: str = "") -> str:
+    """표 한 줄. `sep` 은 컬럼 사이 구분자.
+
+    우측정렬 컬럼은 값이 칸의 오른쪽 끝에 붙으므로, 구분자가 없으면 다음 컬럼과 맞닿는다.
+    """
+    return sep.join(_cell(v, w, a) for v, w, a in zip(values, widths, aligns, strict=True))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -289,6 +424,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="증분 수집 시 마지막 저장일보다 며칠 앞에서부터 다시 받을지 (기본: 7). "
         "배당·분할로 수정 종가가 소급 변경되는 것을 흡수한다",
     )
+
+    docs_collect = subparsers.add_parser("collect-docs", help="SEC 공시와 뉴스를 수집해 저장한다")
+    docs_collect.add_argument("symbols", nargs="*", help="수집할 심볼. 생략하면 유니버스 전체")
+    docs_collect.add_argument(
+        "--source",
+        choices=("all", "sec", "news"),
+        default="all",
+        help="수집할 소스 (기본: all)",
+    )
+    docs_collect.add_argument(
+        "--lookback-days",
+        type=int,
+        default=180,
+        help="SEC 공시를 며칠 전까지 받을지 (기본: 180). 뉴스는 소스가 최근 것만 준다",
+    )
+
+    docs = subparsers.add_parser("docs", help="저장된 문서를 조회한다")
+    docs.add_argument("--symbol", help="이 종목과 엮인 문서만")
+    docs.add_argument("--limit", type=int, default=20, help="출력할 문서 수 (기본: 20)")
 
     subparsers.add_parser("status", help="저장소 적재 현황을 보여준다")
 
@@ -320,6 +474,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _cmd_status(settings)
     if args.command == "score":
         return _cmd_score(settings, args)
+    if args.command == "collect-docs":
+        return _cmd_collect_docs(settings, args)
+    if args.command == "docs":
+        return _cmd_docs(settings, args)
 
     # argparse 가 required=True 로 막아 주므로 여기 도달하지 않는다.
     raise AssertionError(f"처리되지 않은 명령: {args.command!r}")

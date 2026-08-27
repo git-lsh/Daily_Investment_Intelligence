@@ -46,6 +46,20 @@ class Settings(BaseSettings):
     data_dir: Path = PROJECT_ROOT / "data"
     """수집 데이터와 로컬 DB 가 놓이는 디렉토리. 저장소에는 커밋하지 않는다."""
 
+    sec_user_agent: str = ""
+    """SEC EDGAR 에 보낼 신원 표기. **연락 가능한 이메일이 들어가야 한다.**
+
+    SEC 의 요구사항이고, 없으면 차단된다. 기술적 제약이 아니라 약속이다 —
+    문제가 생겼을 때 연락할 곳을 남기라는 뜻이다.
+    형식 예) `"Hong Gildong hong@example.com"`
+    """
+
+    sec_min_interval: float = 0.15
+    """SEC 요청 사이 최소 간격(초). SEC 제한은 초당 10회이므로 0.1 이 하한이다.
+
+    정책이 바뀌었을 때 코드를 고치지 않고 대응하려고 설정으로 뺐다.
+    """
+
     @field_validator("log_level", mode="before")
     @classmethod
     def _normalize_log_level(cls, value: object) -> object:
@@ -62,6 +76,16 @@ class Settings(BaseSettings):
     def db_path(self) -> Path:
         """M1 에서 사용할 SQLite 파일 경로. (M3 에서 PostgreSQL 로 이전 예정)"""
         return self.data_dir / "dii.sqlite3"
+
+    def require_sec_user_agent(self) -> str:
+        """SEC 신원 표기를 돌려준다. 비어 있으면 수집을 시작하기 전에 실패시킨다."""
+        if not self.sec_user_agent.strip():
+            raise ValueError(
+                "DII_SEC_USER_AGENT 가 설정되지 않았다. SEC EDGAR 는 연락 가능한 이메일이 담긴 "
+                "User-Agent 를 요구한다. .env 에 다음 형식으로 넣는다 — "
+                'DII_SEC_USER_AGENT="Hong Gildong hong@example.com"'
+            )
+        return self.sec_user_agent.strip()
 
     def ensure_directories(self) -> None:
         """설정이 가리키는 디렉토리를 만들어 둔다. 이미 있으면 아무 일도 하지 않는다."""

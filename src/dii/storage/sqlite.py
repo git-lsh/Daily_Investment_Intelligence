@@ -13,7 +13,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 from dii.logging_setup import get_logger
-from dii.storage.models import DailyBar, SecurityKind
+from dii.storage.models import DailyBar, Document, DocumentSource, SecurityKind
 from dii.storage.schema import apply_migrations
 
 logger = get_logger(__name__)
@@ -242,3 +242,157 @@ def _parse_date(value: str) -> date:
 def _utc_now_iso() -> str:
     """적재 시각은 UTC 로 기록한다. 로컬 타임존에 의존하면 환경마다 값이 달라진다."""
     return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+class DocumentRepository:
+    """뉴스·공시 문서를 다루는 리포지토리.
+
+    가격과 분리한 이유: 조회 패턴도 수명주기도 다르다. M3 에서 임베딩과 검색이 붙는 곳은
+    이쪽뿐이므로, 경계를 나눠 두면 PostgreSQL 이전 시 영향 범위가 좁아진다.
+    """
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def upsert_documents(self, documents: Iterable[Document]) -> tuple[int, int]:
+        """문서를 저장하고 종목과 연결한다.
+
+        `(source, external_id)` 가 이미 있으면 내용을 갱신한다. 재수집해도 중복되지 않는다.
+
+        Returns:
+            `(저장한 문서 수, 만든 연결 수)`
+        """
+        now = _utc_now_iso()
+        documents = list(documents)
+        if not documents:
+            return 0, 0
+
+        links = 0
+        with self._conn:  # 문서와 연결이 함께 반영되거나 함께 취소된다
+            for doc in documents:
+                cursor = self._conn.execute(
+                    """
+                    INSERT INTO document
+                        (source, external_id, doc_type, title, summary, url,
+                         published_at, fetched_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(source, external_id) DO UPDATE SET
+                        doc_type     = excluded.doc_type,
+                        title        = excluded.title,
+                        summary      = excluded.summary,
+                        url          = excluded.url,
+                        published_at = excluded.published_at,
+                        fetched_at   = excluded.fetched_at
+                    RETURNING id
+                    """,
+                    (
+                        doc.source.value,
+                        doc.external_id,
+                        doc.doc_type,
+                        doc.title,
+                        doc.summary,
+                        doc.url,
+                        _to_utc_iso(doc.published_at),
+                        now,
+                    ),
+                )
+                document_id = cursor.fetchone()["id"]
+
+                # 연결은 INSERT OR IGNORE. 이미 있으면 그대로 두면 된다.
+                self._conn.executemany(
+                    "INSERT OR IGNORE INTO document_symbol (document_id, symbol) VALUES (?, ?)",
+                    [(document_id, symbol) for symbol in doc.symbols],
+                )
+                links += len(doc.symbols)
+
+        return len(documents), links
+
+    def get_documents(
+        self,
+        *,
+        symbol: str | None = None,
+        since: datetime | None = None,
+        as_of: datetime | None = None,
+        limit: int = 100,
+    ) -> list[Document]:
+        """문서를 최신순으로 조회한다.
+
+        Args:
+            symbol: 이 종목과 엮인 문서만.
+            since: 이 시각 이후 발행분만.
+            as_of: **이 시각 이하 발행분만.** 가격과 마찬가지로 룩어헤드를 막는 지점이다.
+            limit: 최대 건수.
+        """
+        sql = [
+            "SELECT d.* FROM document d",
+        ]
+        params: list[object] = []
+        where: list[str] = []
+
+        if symbol is not None:
+            sql.append("JOIN document_symbol ds ON ds.document_id = d.id")
+            where.append("ds.symbol = ?")
+            params.append(symbol)
+        if since is not None:
+            where.append("d.published_at >= ?")
+            params.append(_to_utc_iso(since))
+        if as_of is not None:
+            where.append("d.published_at <= ?")
+            params.append(_to_utc_iso(as_of))
+
+        if where:
+            sql.append("WHERE " + " AND ".join(where))
+        sql.append("ORDER BY d.published_at DESC LIMIT ?")
+        params.append(limit)
+
+        rows = self._conn.execute("\n".join(sql), params).fetchall()
+        return [self._row_to_document(row) for row in rows]
+
+    def count_documents(self, source: DocumentSource | None = None) -> int:
+        if source is None:
+            row = self._conn.execute("SELECT COUNT(*) AS n FROM document").fetchone()
+        else:
+            row = self._conn.execute(
+                "SELECT COUNT(*) AS n FROM document WHERE source = ?", (source.value,)
+            ).fetchone()
+        return int(row["n"])
+
+    def document_coverage(self) -> list[tuple[str, str, int, str, str]]:
+        """`(소스, 서식/발행처, 건수, 최초 발행일, 최종 발행일)`. 적재 현황 확인용."""
+        rows = self._conn.execute(
+            """
+            SELECT source, COALESCE(doc_type, '(없음)') AS kind, COUNT(*) AS n,
+                   MIN(published_at) AS lo, MAX(published_at) AS hi
+            FROM document
+            GROUP BY source, kind
+            ORDER BY source, n DESC
+            """
+        ).fetchall()
+        return [(r["source"], r["kind"], int(r["n"]), r["lo"][:10], r["hi"][:10]) for r in rows]
+
+    def _row_to_document(self, row: sqlite3.Row) -> Document:
+        symbols = self._conn.execute(
+            "SELECT symbol FROM document_symbol WHERE document_id = ? ORDER BY symbol",
+            (row["id"],),
+        ).fetchall()
+        return Document(
+            source=DocumentSource(row["source"]),
+            external_id=row["external_id"],
+            doc_type=row["doc_type"],
+            title=row["title"],
+            summary=row["summary"],
+            url=row["url"],
+            published_at=datetime.fromisoformat(row["published_at"]),
+            symbols=tuple(s["symbol"] for s in symbols),
+        )
+
+
+def _to_utc_iso(moment: datetime) -> str:
+    """UTC ISO 8601 문자열로 정규화한다.
+
+    타임존을 섞어 저장하면 문자열 비교가 시간 비교와 어긋난다.
+    저장 시점에 UTC 로 맞춰 두면 정렬과 범위 조회가 사전순으로 동작한다.
+    """
+    if moment.tzinfo is None:
+        raise ValueError(f"타임존 없는 datetime 은 저장할 수 없다: {moment!r}")
+    return moment.astimezone(UTC).isoformat(timespec="seconds")

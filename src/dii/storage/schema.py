@@ -13,7 +13,7 @@ from dii.logging_setup import get_logger
 logger = get_logger(__name__)
 
 #: 코드가 기대하는 스키마 버전. MIGRATIONS 를 추가할 때마다 함께 올린다.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _V1 = """
 -- 수집·분석 대상 종목. 가격 테이블이 참조한다.
@@ -55,8 +55,44 @@ CREATE TABLE IF NOT EXISTS daily_price (
 CREATE INDEX IF NOT EXISTS idx_daily_price_trade_date ON daily_price(trade_date);
 """
 
+_V2 = """
+-- 뉴스 기사와 SEC 공시. 본문 텍스트가 아니라 제목·요약·링크만 보관한다.
+-- 원문 전체를 저장하지 않는 이유: 저작권 문제를 피하고, 검색에는 요약으로 충분하기 때문이다.
+CREATE TABLE IF NOT EXISTS document (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    source       TEXT NOT NULL CHECK (source IN ('sec', 'news')),
+    -- 소스가 주는 고유 식별자. SEC 는 accession number, 뉴스는 기사 id.
+    -- (source, external_id) 유일 제약이 M1 의 (종목, 날짜)와 같은 역할을 한다.
+    external_id  TEXT NOT NULL,
+    doc_type     TEXT,
+    title        TEXT NOT NULL,
+    summary      TEXT,
+    url          TEXT NOT NULL,
+    -- UTC ISO 8601. 날짜만 있는 공시는 그날 자정으로 본다.
+    -- 타임존을 섞으면 "어제 뉴스"가 조회 위치에 따라 달라진다.
+    published_at TEXT NOT NULL,
+    fetched_at   TEXT NOT NULL,
+
+    UNIQUE (source, external_id)
+);
+
+-- 기사 하나가 여러 종목을 언급할 수 있고, 종목 하나에 기사가 여럿 붙는다 (다대다).
+-- 연결 테이블로 표현해 기사 본문을 종목 수만큼 복사하지 않는다.
+CREATE TABLE IF NOT EXISTS document_symbol (
+    document_id INTEGER NOT NULL REFERENCES document(id) ON DELETE CASCADE,
+    symbol      TEXT    NOT NULL REFERENCES security(symbol),
+    PRIMARY KEY (document_id, symbol)
+);
+
+-- "최근 N일 문서" 조회용.
+CREATE INDEX IF NOT EXISTS idx_document_published ON document(published_at);
+-- "이 종목의 최근 문서" 조회용. 연결 테이블의 PK 는 (document_id, symbol) 순이라
+-- symbol 로 시작하는 조회를 커버하지 못한다.
+CREATE INDEX IF NOT EXISTS idx_document_symbol_symbol ON document_symbol(symbol);
+"""
+
 #: 버전 N 으로 올리는 DDL 을 순서대로 담는다. 인덱스 i 가 버전 i+1 에 대응한다.
-MIGRATIONS: tuple[str, ...] = (_V1,)
+MIGRATIONS: tuple[str, ...] = (_V1, _V2)
 
 
 def apply_migrations(conn: sqlite3.Connection) -> int:

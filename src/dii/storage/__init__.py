@@ -5,7 +5,15 @@ M3 에서 PostgreSQL 로 교체할 때 이 경계 안쪽만 바뀌게 하기 위
 (`docs/architecture.md` 계층 경계 원칙 참고)
 """
 
-from dii.storage.models import DailyBar, SecurityKind
-from dii.storage.sqlite import SqliteStorage, connect
+from dii.storage.models import DailyBar, Document, DocumentSource, SecurityKind
+from dii.storage.sqlite import DocumentRepository, SqliteStorage, connect
 
-__all__ = ["DailyBar", "SecurityKind", "SqliteStorage", "connect"]
+__all__ = [
+    "DailyBar",
+    "Document",
+    "DocumentRepository",
+    "DocumentSource",
+    "SecurityKind",
+    "SqliteStorage",
+    "connect",
+]

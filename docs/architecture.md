@@ -33,8 +33,11 @@
 | `dii.universe` | `config/universe.toml` 을 읽어 검증한다. 수집 대상의 단일 출처 |
 | `dii.storage.models` | 저장 계층의 공용 자료형. 바깥이 pandas 나 sqlite3 에 의존하지 않게 한다 |
 | `dii.storage.schema` | 테이블 정의와 마이그레이션 (`PRAGMA user_version` 기반) |
-| `dii.storage.sqlite` | 리포지토리 구현. **SQL 은 이 파일 밖으로 나가지 않는다** |
+| `dii.storage.sqlite` | 리포지토리 구현(가격·문서). **SQL 은 이 파일 밖으로 나가지 않는다** |
 | `dii.collect.prices` | yfinance 로 일봉을 받아 검증하고 저장소에 넘긴다 |
+| `dii.collect.http` | rate limit·재시도·타임아웃을 지키는 공용 HTTP 클라이언트 |
+| `dii.collect.filings` | SEC EDGAR 공시 목록 수집 |
+| `dii.collect.news` | yfinance 내장 뉴스 수집 |
 | `dii.processing.frames` | 저장 형식(long) → 분석 형식(wide) 변환. **룩어헤드를 막는 관문** |
 | `dii.processing.indicators` | 수익률·변동성·거래량 지표. 전부 순수 함수 |
 | `dii.quant.factors` | 팩터 정의와 가중치. 미리 고정한다 |
