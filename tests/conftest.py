@@ -1,12 +1,21 @@
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
 from dii.config import get_settings
+
+# 실패 시 pytest 가 찍는 로그·assert 메시지에 한글이 섞인다. Windows 콘솔 기본 인코딩(cp949)
+# 으로는 깨져서 읽을 수 없으므로, 수집 시점에 한 번 UTF-8 로 맞춰 둔다.
+# (애플리케이션 쪽은 dii.cli 진입점에서 같은 일을 한다)
+for _stream in (sys.stdout, sys.stderr):
+    _reconfigure = getattr(_stream, "reconfigure", None)
+    if _reconfigure is not None:
+        _reconfigure(encoding="utf-8", errors="backslashreplace")
 
 
 @pytest.fixture(autouse=True)

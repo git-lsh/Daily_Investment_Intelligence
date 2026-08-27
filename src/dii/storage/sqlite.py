@@ -7,7 +7,7 @@ M3 에서 PostgreSQL 구현체로 갈아탈 때 바뀌는 범위를 이 파일�
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -165,6 +165,37 @@ class SqliteStorage:
         sql += " ORDER BY trade_date"
 
         return [_row_to_bar(row) for row in self._conn.execute(sql, params)]
+
+    def get_bars_asof(self, symbols: Sequence[str], as_of: date) -> list[DailyBar]:
+        """여러 종목의 **`as_of` 이하** 시세를 한 번의 조회로 가져온다.
+
+        이 메서드가 룩어헤드를 막는 지점이다. 여기서 미래를 잘라 내면, 이후 계산 코드는
+        미래를 볼 방법 자체가 없다. 계산 단계에서 조심하는 방식은 언젠가 깨진다.
+        (`docs/tech-notes/05-quant-factor-pipeline.md` 3절)
+
+        종목마다 따로 물으면 56번 왕복한다(N+1). 한 번에 가져온다.
+        """
+        if not symbols:
+            return []
+
+        placeholders = ", ".join("?" for _ in symbols)
+        sql = (
+            f"SELECT * FROM daily_price WHERE symbol IN ({placeholders}) AND trade_date <= ? "
+            "ORDER BY symbol, trade_date"
+        )
+        params: list[object] = [*symbols, as_of.strftime(_DATE_FMT)]
+        return [_row_to_bar(row) for row in self._conn.execute(sql, params)]
+
+    def last_trade_date_on_or_before(self, as_of: date) -> date | None:
+        """`as_of` 이하의 가장 최근 거래일. 없으면 None.
+
+        휴장일이나 주말을 기준 날짜로 넘겨도 직전 거래일로 맞춰 주기 위한 조회다.
+        """
+        row = self._conn.execute(
+            "SELECT MAX(trade_date) AS d FROM daily_price WHERE trade_date <= ?",
+            (as_of.strftime(_DATE_FMT),),
+        ).fetchone()
+        return _parse_date(row["d"]) if row and row["d"] else None
 
     def count_bars(self, symbol: str | None = None) -> int:
         """저장된 일봉 수. 종목을 주면 그 종목만."""
