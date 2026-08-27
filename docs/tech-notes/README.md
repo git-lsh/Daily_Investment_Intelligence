@@ -42,5 +42,7 @@
 |---|---|---|---|
 | [01-foundation-uv.md](01-foundation-uv.md) | Foundation | 2026-08-27 | 회고완료 |
 | [02-foundation-pydantic-settings.md](02-foundation-pydantic-settings.md) | Foundation | 2026-08-27 | 회고완료 |
+| [03-data-collection-yfinance.md](03-data-collection-yfinance.md) | Data Collection | 2026-08-27 | 회고완료 |
+| [04-storage-sqlite.md](04-storage-sqlite.md) | Storage | 2026-08-27 | 회고완료 |
 
 작성 예정 목록은 [Project_Plan.md 5.7절](../../Project_Plan.md)을 참고한다.

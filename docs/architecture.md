@@ -6,6 +6,7 @@
 .
 ├── src/dii/              # 애플리케이션 패키지 (import 이름은 dii)
 ├── tests/                # 테스트
+├── config/               # 유니버스 등 사람이 고치는 설정 (커밋함)
 ├── docs/
 │   ├── architecture.md   # 이 문서
 │   └── tech-notes/       # 기술 스택 학습 로그
@@ -29,6 +30,11 @@
 | `dii.config` | 환경에서 설정을 읽어 검증한다. 다른 모듈은 여기서만 설정을 가져온다 |
 | `dii.logging_setup` | 로깅 설정. **핸들러를 붙이는 것은 진입점에서 한 번뿐** |
 | `dii.cli` | 명령줄 진입점. 파이프라인 각 단계가 하위 명령으로 붙는다 |
+| `dii.universe` | `config/universe.toml` 을 읽어 검증한다. 수집 대상의 단일 출처 |
+| `dii.storage.models` | 저장 계층의 공용 자료형. 바깥이 pandas 나 sqlite3 에 의존하지 않게 한다 |
+| `dii.storage.schema` | 테이블 정의와 마이그레이션 (`PRAGMA user_version` 기반) |
+| `dii.storage.sqlite` | 리포지토리 구현. **SQL 은 이 파일 밖으로 나가지 않는다** |
+| `dii.collect.prices` | yfinance 로 일봉을 받아 검증하고 저장소에 넘긴다 |
 
 ## 계층 경계 원칙
 
@@ -59,9 +65,6 @@ PostgreSQL 로 갈아탄다.** 그 이전을 감당 가능한 크기로 만들�
 
 | 예정 모듈 | 마일스톤 | 책임 |
 |---|---|---|
-| `dii.universe` | M1 | 분석 대상 종목·섹터 정의 로딩 |
-| `dii.collect.*` | M1, M3 | 외부 소스에서 데이터 가져오기 |
-| `dii.storage.*` | M1, M3 | 리포지토리 계층 및 DB 구현체 |
 | `dii.processing.*` | M2 | 파생 지표 계산 배치 |
 | `dii.quant.*` | M2 | 팩터 스코어링과 랭킹 |
 | `dii.retrieval.*` | M3 | 임베딩, 검색 |

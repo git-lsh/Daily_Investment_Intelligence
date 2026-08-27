@@ -25,6 +25,11 @@ _DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 # 외부 라이브러리가 쏟아내는 로그를 낮춰 둔다. 우리 로그가 묻히지 않게 하기 위함.
 _NOISY_LOGGERS = ("urllib3", "httpx", "httpcore", "asyncio")
 
+# yfinance 는 심볼 조회 실패를 여러 줄의 ERROR 로 직접 출력한다. 우리 수집기가 그 상황을
+# 이미 판정해 실패로 기록하므로 그대로 두면 같은 사실이 두 번, 그것도 더 지저분하게 찍힌다.
+# 원인 추적이 필요할 때는 DEBUG 로 실행하면 다시 보인다.
+_DOUBLE_REPORTING_LOGGERS = ("yfinance",)
+
 _configured = False
 
 
@@ -53,6 +58,10 @@ def setup_logging(settings: Settings, *, force: bool = False) -> None:
 
     for name in _NOISY_LOGGERS:
         logging.getLogger(name).setLevel(logging.WARNING)
+
+    debugging = root.level <= logging.DEBUG
+    for name in _DOUBLE_REPORTING_LOGGERS:
+        logging.getLogger(name).setLevel(logging.DEBUG if debugging else logging.CRITICAL)
 
     _configured = True
 
