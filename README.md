@@ -44,4 +44,6 @@ Data Collection → Data Storage → Data Processing → Quantitative Analysis
 
 ## 상태
 
-구현 착수 전. 저장소 뼈대와 문서 규약만 세워진 상태.
+**M0 — 기반 세팅** 진행 중. 저장소 뼈대와 문서 규약 완료, 개발 환경 구성 남음.
+
+마일스톤 M0~M5와 각 단계의 완료 조건은 [Project_Plan.md 5장](Project_Plan.md)을 참고.
